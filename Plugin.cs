@@ -21,31 +21,14 @@ namespace BothBrakesMod
         public static ConfigEntry<bool> AirbrakeHoldMode = null!;
         public static ConfigEntry<bool> BothBrakesHoldMode = null!;
 
-        // Toggle states
+        // Toggle/Active states (controlled dynamically by Update)
         public static bool WheelbrakeToggled = false;
         public static bool AirbrakeToggled = false;
         public static bool BothBrakesToggled = false;
 
-        // Effective states (Dynamically resolves Hold Mode vs Toggle Mode)
-        public static bool IsWheelbrakeActive
-        {
-            get
-            {
-                bool wb = WheelbrakeHoldMode.Value ? WheelbrakeKey.Value.IsPressed() : WheelbrakeToggled;
-                bool bb = BothBrakesHoldMode.Value ? BothBrakesKey.Value.IsPressed() : BothBrakesToggled;
-                return wb || bb;
-            }
-        }
-
-        public static bool IsAirbrakeActive
-        {
-            get
-            {
-                bool ab = AirbrakeHoldMode.Value ? AirbrakeKey.Value.IsPressed() : AirbrakeToggled;
-                bool bb = BothBrakesHoldMode.Value ? BothBrakesKey.Value.IsPressed() : BothBrakesToggled;
-                return ab || bb;
-            }
-        }
+        // Effective states
+        public static bool IsWheelbrakeActive => WheelbrakeToggled || BothBrakesToggled;
+        public static bool IsAirbrakeActive => AirbrakeToggled || BothBrakesToggled;
 
         private void Awake()
         {
@@ -94,15 +77,13 @@ namespace BothBrakesMod
                 "If true, both brakes are only active while holding the hotkey. If false, they function as a toggle."
             );
 
-            // Setup Harmony manual patching (using silent reflection to prevent console warnings)
+            // Setup Harmony manual patching
             try
             {
                 Harmony harmony = new Harmony("com.BothBrakesMod");
 
-                // Patch Landing Gear for Wheelbrakes
-                PatchMethodByName(harmony, "LandingGear", "FixedUpdate", typeof(LandingGear_Patch));
-
-                // Patch Pilot Player input states for throttle overriding
+                // We removed the LandingGear patch and centralized everything in PilotPlayerState.
+                // Patch Pilot Player input states for overriding (Keyboard, Mouse, HOTAS)
                 PatchMethodByName(harmony, "PilotPlayerState", "PlayerAxisControls", typeof(PilotPlayerState_Patch));
                 PatchMethodByName(harmony, "PilotPlayerState", "PlayerControls", typeof(PilotPlayerState_Patch));
                 PatchMethodByName(harmony, "PilotPlayerState", "PlayerThrottleAxis1Controls", typeof(PilotPlayerState_Patch));
@@ -125,7 +106,6 @@ namespace BothBrakesMod
                 var target = AccessTools.Method(targetType, methodName);
                 if (target == null) return;
 
-                // Use silent standard C# GetMethod to avoid Harmony console warnings on missing prefixes/postfixes
                 var prefix = patchType.GetMethod("Prefix");
                 var postfix = patchType.GetMethod("Postfix");
 
@@ -143,14 +123,14 @@ namespace BothBrakesMod
 
         private void Update()
         {
-            // Reset toggles if not inside a local aircraft (e.g. menu, spectator, dead, ejected)
+            // Reset states if not inside a local aircraft (e.g. menu, spectator, dead, ejected)
             Aircraft localAircraft;
             if (!GameManager.GetLocalAircraft(out localAircraft) || localAircraft == null)
             {
                 if (WheelbrakeToggled || AirbrakeToggled || BothBrakesToggled)
                 {
                     WheelbrakeToggled = AirbrakeToggled = BothBrakesToggled = false;
-                    Log.LogInfo("Not in local aircraft, resetting brake toggles.");
+                    Log.LogInfo("Not in local aircraft, resetting brake states.");
                 }
                 return;
             }
@@ -160,61 +140,74 @@ namespace BothBrakesMod
             try { inChat = CursorManager.GetFlag(CursorFlags.Chat); } catch {}
             if (inChat) return;
 
-            // Check shortcuts (Only trigger if the respective key is in Toggle Mode)
-            if (!WheelbrakeHoldMode.Value && WheelbrakeKey.Value.IsDown())
+            // --- BOTH BRAKES KEY ---
+            if (BothBrakesHoldMode.Value)
             {
-                WheelbrakeToggled = !WheelbrakeToggled;
-                BothBrakesToggled = WheelbrakeToggled && AirbrakeToggled;
-                Log.LogInfo($"Wheelbrakes toggled: {WheelbrakeToggled}");
+                BothBrakesToggled = BothBrakesKey.Value.IsPressed();
+                if (BothBrakesToggled)
+                {
+                    WheelbrakeToggled = AirbrakeToggled = true;
+                }
+                else
+                {
+                    WheelbrakeToggled = AirbrakeToggled = false;
+                }
             }
-
-            if (!AirbrakeHoldMode.Value && AirbrakeKey.Value.IsDown())
-            {
-                AirbrakeToggled = !AirbrakeToggled;
-                BothBrakesToggled = WheelbrakeToggled && AirbrakeToggled;
-                Log.LogInfo($"Airbrakes toggled: {AirbrakeToggled}");
-            }
-
-            if (!BothBrakesHoldMode.Value && BothBrakesKey.Value.IsDown())
+            else if (BothBrakesKey.Value.IsDown())
             {
                 BothBrakesToggled = !BothBrakesToggled;
                 WheelbrakeToggled = AirbrakeToggled = BothBrakesToggled;
                 Log.LogInfo($"Both brakes toggled: {BothBrakesToggled}");
             }
-        }
-    }
 
-    // ==========================================
-    // WHEELBRAKE PATCH
-    // ==========================================
-    public static class LandingGear_Patch
-    {
-        public static void Prefix(Component __instance)
-        {
-            if (!Plugin.IsWheelbrakeActive || __instance == null) return;
-
-            Aircraft aircraft = __instance.GetComponentInParent<Aircraft>();
-            Aircraft localAircraft;
-            if (GameManager.GetLocalAircraft(out localAircraft) && aircraft == localAircraft && aircraft.controlInputs != null)
+            // --- WHEELBRAKE KEY ---
+            if (WheelbrakeHoldMode.Value)
             {
-                aircraft.controlInputs.brake = 1f; // Force brake in FixedUpdate
+                WheelbrakeToggled = WheelbrakeKey.Value.IsPressed();
+            }
+            else if (WheelbrakeKey.Value.IsDown())
+            {
+                WheelbrakeToggled = !WheelbrakeToggled;
+                Log.LogInfo($"Wheelbrakes toggled: {WheelbrakeToggled}");
+            }
+
+            // --- AIRBRAKE KEY ---
+            if (AirbrakeHoldMode.Value)
+            {
+                AirbrakeToggled = AirbrakeKey.Value.IsPressed();
+            }
+            else if (AirbrakeKey.Value.IsDown())
+            {
+                AirbrakeToggled = !AirbrakeToggled;
+                Log.LogInfo($"Airbrakes toggled: {AirbrakeToggled}");
             }
         }
     }
 
     // ==========================================
-    // PILOT PLAYER STATE PATCH
+    // PILOT PLAYER STATE PATCH (Handles BOTH Brakes)
     // ==========================================
     public static class PilotPlayerState_Patch
     {
         public static void Postfix(PilotPlayerState __instance)
         {
-            if (!Plugin.IsAirbrakeActive || __instance == null || __instance.controlInputs == null) return;
+            // If neither brake is active, do nothing
+            if ((!Plugin.IsAirbrakeActive && !Plugin.IsWheelbrakeActive) || __instance == null || __instance.controlInputs == null) return;
 
             Aircraft localAircraft;
             if (GameManager.GetLocalAircraft(out localAircraft) && localAircraft != null)
             {
-                __instance.controlInputs.throttle = 0f; // Force throttle to 0f
+                // Inject the Wheelbrake logic
+                if (Plugin.IsWheelbrakeActive)
+                {
+                    __instance.controlInputs.brake = 1f; // Force brake input to 100%
+                }
+
+                // Inject the Airbrake logic
+                if (Plugin.IsAirbrakeActive)
+                {
+                    __instance.controlInputs.throttle = 0f; // Force throttle to 0f
+                }
             }
         }
     }
