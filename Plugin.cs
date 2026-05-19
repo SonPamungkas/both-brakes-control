@@ -16,14 +16,36 @@ namespace BothBrakesMod
         public static ConfigEntry<KeyboardShortcut> AirbrakeKey = null!;
         public static ConfigEntry<KeyboardShortcut> BothBrakesKey = null!;
 
+        // Config Entries for Hold Mode
+        public static ConfigEntry<bool> WheelbrakeHoldMode = null!;
+        public static ConfigEntry<bool> AirbrakeHoldMode = null!;
+        public static ConfigEntry<bool> BothBrakesHoldMode = null!;
+
         // Toggle states
         public static bool WheelbrakeToggled = false;
         public static bool AirbrakeToggled = false;
         public static bool BothBrakesToggled = false;
 
-        // Effective states
-        public static bool IsWheelbrakeActive => WheelbrakeToggled || BothBrakesToggled;
-        public static bool IsAirbrakeActive => AirbrakeToggled || BothBrakesToggled;
+        // Effective states (Dynamically resolves Hold Mode vs Toggle Mode)
+        public static bool IsWheelbrakeActive
+        {
+            get
+            {
+                bool wb = WheelbrakeHoldMode.Value ? WheelbrakeKey.Value.IsPressed() : WheelbrakeToggled;
+                bool bb = BothBrakesHoldMode.Value ? BothBrakesKey.Value.IsPressed() : BothBrakesToggled;
+                return wb || bb;
+            }
+        }
+
+        public static bool IsAirbrakeActive
+        {
+            get
+            {
+                bool ab = AirbrakeHoldMode.Value ? AirbrakeKey.Value.IsPressed() : AirbrakeToggled;
+                bool bb = BothBrakesHoldMode.Value ? BothBrakesKey.Value.IsPressed() : BothBrakesToggled;
+                return ab || bb;
+            }
+        }
 
         private void Awake()
         {
@@ -34,21 +56,42 @@ namespace BothBrakesMod
                 "Keybinds", 
                 "Toggle Wheel Brakes", 
                 new KeyboardShortcut(KeyCode.B, KeyCode.LeftAlt), 
-                "Key shortcut to toggle the wheel brakes on/off."
+                "Key shortcut to toggle/hold the wheel brakes."
             );
 
             AirbrakeKey = Config.Bind(
                 "Keybinds", 
                 "Toggle Airbrakes", 
                 new KeyboardShortcut(KeyCode.G, KeyCode.LeftAlt), 
-                "Key shortcut to toggle the airbrakes on/off (deploys even with throttle active)."
+                "Key shortcut to toggle/hold the airbrakes (deploys even with throttle active)."
             );
 
             BothBrakesKey = Config.Bind(
                 "Keybinds", 
                 "Toggle Both Brakes", 
                 new KeyboardShortcut(KeyCode.H, KeyCode.LeftAlt), 
-                "Key shortcut to toggle both wheel brakes and airbrakes simultaneously."
+                "Key shortcut to toggle/hold both wheel brakes and airbrakes simultaneously."
+            );
+
+            WheelbrakeHoldMode = Config.Bind(
+                "Settings", 
+                "Wheel Brakes Hold Mode", 
+                false, 
+                "If true, wheel brakes are only active while holding the hotkey. If false, they function as a toggle."
+            );
+
+            AirbrakeHoldMode = Config.Bind(
+                "Settings", 
+                "Airbrakes Hold Mode", 
+                false, 
+                "If true, airbrakes are only active while holding the hotkey. If false, they function as a toggle."
+            );
+
+            BothBrakesHoldMode = Config.Bind(
+                "Settings", 
+                "Both Brakes Hold Mode", 
+                false, 
+                "If true, both brakes are only active while holding the hotkey. If false, they function as a toggle."
             );
 
             // Setup Harmony manual patching (using silent reflection to prevent console warnings)
@@ -117,22 +160,22 @@ namespace BothBrakesMod
             try { inChat = CursorManager.GetFlag(CursorFlags.Chat); } catch {}
             if (inChat) return;
 
-            // Check shortcuts
-            if (WheelbrakeKey.Value.IsDown())
+            // Check shortcuts (Only trigger if the respective key is in Toggle Mode)
+            if (!WheelbrakeHoldMode.Value && WheelbrakeKey.Value.IsDown())
             {
                 WheelbrakeToggled = !WheelbrakeToggled;
                 BothBrakesToggled = WheelbrakeToggled && AirbrakeToggled;
                 Log.LogInfo($"Wheelbrakes toggled: {WheelbrakeToggled}");
             }
 
-            if (AirbrakeKey.Value.IsDown())
+            if (!AirbrakeHoldMode.Value && AirbrakeKey.Value.IsDown())
             {
                 AirbrakeToggled = !AirbrakeToggled;
                 BothBrakesToggled = WheelbrakeToggled && AirbrakeToggled;
                 Log.LogInfo($"Airbrakes toggled: {AirbrakeToggled}");
             }
 
-            if (BothBrakesKey.Value.IsDown())
+            if (!BothBrakesHoldMode.Value && BothBrakesKey.Value.IsDown())
             {
                 BothBrakesToggled = !BothBrakesToggled;
                 WheelbrakeToggled = AirbrakeToggled = BothBrakesToggled;
