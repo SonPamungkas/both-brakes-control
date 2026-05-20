@@ -52,6 +52,7 @@
         <Reference Include="UnityEngine.IMGUIModule" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\UnityEngine.IMGUIModule.dll" Private="False" Publicize="True" />
         <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\UnityEngine.TextRenderingModule.dll" Private="False" Publicize="True" />
         <Reference Include="Mirage" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\Mirage.dll" Private="False" Publicize="True" />
+        <Reference Include="Rewired_Core" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\Rewired_Core.dll" Private="False" Publicize="True" />
     </ItemGroup>
 
     <Target Name="PostBuild" AfterTargets="Build" Condition="'$(ModDestination)' != ''">

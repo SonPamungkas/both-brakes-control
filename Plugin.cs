@@ -3,6 +3,7 @@ using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
+using Rewired;
 
 namespace BothBrakesMod
 {
@@ -11,15 +12,11 @@ namespace BothBrakesMod
     {
         public static BepInEx.Logging.ManualLogSource Log = null!;
 
-        // Config Entries for Keyboard Shortcuts
-        public static ConfigEntry<KeyboardShortcut> WheelbrakeKey = null!;
-        public static ConfigEntry<KeyboardShortcut> AirbrakeKey = null!;
-        public static ConfigEntry<KeyboardShortcut> BothBrakesKey = null!;
-
         // Config Entries for Hold Mode
         public static ConfigEntry<bool> WheelbrakeHoldMode = null!;
         public static ConfigEntry<bool> AirbrakeHoldMode = null!;
         public static ConfigEntry<bool> BothBrakesHoldMode = null!;
+        public static ConfigEntry<bool> VerboseLogging = null!;
 
         // Toggle/Active states (controlled dynamically by Update)
         public static bool WheelbrakeToggled = false;
@@ -34,28 +31,7 @@ namespace BothBrakesMod
         {
             Log = Logger;
 
-            // Bind configurations with beautiful, helpful descriptions
-            WheelbrakeKey = Config.Bind(
-                "Keybinds", 
-                "Toggle Wheel Brakes", 
-                new KeyboardShortcut(KeyCode.B, KeyCode.LeftAlt), 
-                "Key shortcut to toggle/hold the wheel brakes."
-            );
-
-            AirbrakeKey = Config.Bind(
-                "Keybinds", 
-                "Toggle Airbrakes", 
-                new KeyboardShortcut(KeyCode.G, KeyCode.LeftAlt), 
-                "Key shortcut to toggle/hold the airbrakes (deploys even with throttle active)."
-            );
-
-            BothBrakesKey = Config.Bind(
-                "Keybinds", 
-                "Toggle Both Brakes", 
-                new KeyboardShortcut(KeyCode.H, KeyCode.LeftAlt), 
-                "Key shortcut to toggle/hold both wheel brakes and airbrakes simultaneously."
-            );
-
+            // Bind configurations for hold vs toggle mode (customizable in config/BepInEx menu)
             WheelbrakeHoldMode = Config.Bind(
                 "Settings", 
                 "Wheel Brakes Hold Mode", 
@@ -77,12 +53,27 @@ namespace BothBrakesMod
                 "If true, both brakes are only active while holding the hotkey. If false, they function as a toggle."
             );
 
+            VerboseLogging = Config.Bind(
+                "Debug", 
+                "Verbose Logging", 
+                false, 
+                "If true, the mod will output verbose telemetry logs to the BepInEx console."
+            );
+
+            // Register custom input actions via in-game controls system
+            ExtraInputManager.LoadPendingActions();
+            ExtraInputManager.RegisterAction("ToggleWheelbrake", Rewired.InputActionType.Button);
+            ExtraInputManager.RegisterAction("ToggleAirbrake", Rewired.InputActionType.Button);
+            ExtraInputManager.RegisterAction("ToggleBothBrakes", Rewired.InputActionType.Button);
+
             // Setup Harmony manual patching
             try
             {
                 Harmony harmony = new Harmony("com.BothBrakesMod");
 
-                // We removed the LandingGear patch and centralized everything in PilotPlayerState.
+                // Patch Rewired action injector prefix
+                harmony.PatchAll(typeof(RewiredActionInjector));
+
                 // Patch Pilot Player input states for overriding (Keyboard, Mouse, HOTAS)
                 PatchMethodByName(harmony, "PilotPlayerState", "PlayerAxisControls", typeof(PilotPlayerState_Patch));
                 PatchMethodByName(harmony, "PilotPlayerState", "PlayerControls", typeof(PilotPlayerState_Patch));
@@ -130,56 +121,60 @@ namespace BothBrakesMod
                 if (WheelbrakeToggled || AirbrakeToggled || BothBrakesToggled)
                 {
                     WheelbrakeToggled = AirbrakeToggled = BothBrakesToggled = false;
-                    Log.LogInfo("Not in local aircraft, resetting brake states.");
+                    if (VerboseLogging.Value) Log.LogInfo("Not in local aircraft, resetting brake states.");
                 }
                 return;
             }
+
+            // Only poll input if Rewired is fully initialized
+            if (!ExtraInputManager.RewiredInitialized) return;
 
             // Prevent toggle input when in chat
             bool inChat = false;
             try { inChat = CursorManager.GetFlag(CursorFlags.Chat); } catch {}
             if (inChat) return;
 
+            // Get local Rewired player
+            Rewired.Player localPlayer = ReInput.players.GetPlayer(0);
+            if (localPlayer == null) return;
+
             // --- BOTH BRAKES KEY ---
             if (BothBrakesHoldMode.Value)
             {
-                BothBrakesToggled = BothBrakesKey.Value.IsPressed();
-                if (BothBrakesToggled)
+                bool isHeld = localPlayer.GetButton("ToggleBothBrakes");
+                if (isHeld != BothBrakesToggled)
                 {
-                    WheelbrakeToggled = AirbrakeToggled = true;
-                }
-                else
-                {
-                    WheelbrakeToggled = AirbrakeToggled = false;
+                    BothBrakesToggled = isHeld;
+                    WheelbrakeToggled = AirbrakeToggled = isHeld;
                 }
             }
-            else if (BothBrakesKey.Value.IsDown())
+            else if (localPlayer.GetButtonDown("ToggleBothBrakes"))
             {
                 BothBrakesToggled = !BothBrakesToggled;
                 WheelbrakeToggled = AirbrakeToggled = BothBrakesToggled;
-                Log.LogInfo($"Both brakes toggled: {BothBrakesToggled}");
+                if (VerboseLogging.Value) Log.LogInfo($"Both brakes toggled: {BothBrakesToggled}");
             }
 
             // --- WHEELBRAKE KEY ---
             if (WheelbrakeHoldMode.Value)
             {
-                WheelbrakeToggled = WheelbrakeKey.Value.IsPressed();
+                WheelbrakeToggled = localPlayer.GetButton("ToggleWheelbrake");
             }
-            else if (WheelbrakeKey.Value.IsDown())
+            else if (localPlayer.GetButtonDown("ToggleWheelbrake"))
             {
                 WheelbrakeToggled = !WheelbrakeToggled;
-                Log.LogInfo($"Wheelbrakes toggled: {WheelbrakeToggled}");
+                if (VerboseLogging.Value) Log.LogInfo($"Wheelbrakes toggled: {WheelbrakeToggled}");
             }
 
             // --- AIRBRAKE KEY ---
             if (AirbrakeHoldMode.Value)
             {
-                AirbrakeToggled = AirbrakeKey.Value.IsPressed();
+                AirbrakeToggled = localPlayer.GetButton("ToggleAirbrake");
             }
-            else if (AirbrakeKey.Value.IsDown())
+            else if (localPlayer.GetButtonDown("ToggleAirbrake"))
             {
                 AirbrakeToggled = !AirbrakeToggled;
-                Log.LogInfo($"Airbrakes toggled: {AirbrakeToggled}");
+                if (VerboseLogging.Value) Log.LogInfo($"Airbrakes toggled: {AirbrakeToggled}");
             }
         }
     }
