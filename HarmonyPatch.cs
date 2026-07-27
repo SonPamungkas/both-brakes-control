@@ -60,12 +60,12 @@ namespace BothBrakesMod
 
             // Get actionCategories list
             var categoriesField = userData.GetType().GetField("actionCategories", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-            var categories = categoriesField?.GetValue(userData) as System.Collections.Generic.List<InputCategory>;
+            var categories = categoriesField?.GetValue(userData) as System.Collections.Generic.List<InputActionCategory>;
             if (categories == null)
             {
                 Plugin.Log.LogInfo("RewiredActionInjector: actionCategories field cast failed, trying property...");
                 var categoriesProp = userData.GetType().GetProperty("actionCategories", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                categories = categoriesProp?.GetValue(userData) as System.Collections.Generic.List<InputCategory>;
+                categories = categoriesProp?.GetValue(userData) as System.Collections.Generic.List<InputActionCategory>;
             }
             
             if (categories == null)
