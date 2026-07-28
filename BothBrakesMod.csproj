@@ -53,7 +53,11 @@
         <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\UnityEngine.TextRenderingModule.dll" Private="False" Publicize="True" />
         <Reference Include="Mirage" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\Mirage.dll" Private="False" Publicize="True" />
         <Reference Include="Rewired_Core" HintPath="$(NUCLEAR_OPTION_SERVER_REFERENCES)\Rewired_Core.dll" Private="False" Publicize="True" />
-        <Reference Include="InputFramework" HintPath="$(SolutionDir)\InputFramework.dll" Private="False" Publicize="True" />
+        <Reference Include="Newtonsoft.Json" HintPath="..\..\ExtraInput\Newtonsoft.Json.dll" Private="False" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="ExtraInputActions.json" />
     </ItemGroup>
 
     <Target Name="PostBuild" AfterTargets="Build" Condition="'$(ModDestination)' != ''">
