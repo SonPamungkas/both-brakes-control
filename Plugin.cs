@@ -4,6 +4,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using Rewired;
+using InputFramework;
 
 namespace BothBrakesMod
 {
@@ -22,6 +23,8 @@ namespace BothBrakesMod
         public static bool WheelbrakeToggled = false;
         public static bool AirbrakeToggled = false;
         public static bool BothBrakesToggled = false;
+        
+        public static bool MapExists;
 
         // Effective states
         public static bool IsWheelbrakeActive => WheelbrakeToggled || BothBrakesToggled;
@@ -62,17 +65,17 @@ namespace BothBrakesMod
 
             // Register custom input actions via in-game controls system
             ExtraInputManager.LoadPendingActions();
-            ExtraInputManager.RegisterAction("ToggleWheelbrake", Rewired.InputActionType.Button);
-            ExtraInputManager.RegisterAction("ToggleAirbrake", Rewired.InputActionType.Button);
-            ExtraInputManager.RegisterAction("ToggleBothBrakes", Rewired.InputActionType.Button);
+            ExtraInputManager.RegisterAction("ToggleWheelbrake", Rewired.InputActionType.Button, "Flight");
+            ExtraInputManager.RegisterAction("ToggleAirbrake", Rewired.InputActionType.Button, "Flight");
+            ExtraInputManager.RegisterAction("ToggleBothBrakes", Rewired.InputActionType.Button, "Flight");
 
             // Setup Harmony manual patching
             try
             {
                 Harmony harmony = new Harmony("com.BothBrakesMod");
 
-                // Patch Rewired action injector prefix
-                harmony.PatchAll(typeof(RewiredActionInjector));
+                // Patch Map Enable/Disable hook for MapExists
+                harmony.PatchAll(typeof(DynamicMapPatches));
 
                 // Patch Pilot Player input states for overriding (Keyboard, Mouse, HOTAS)
                 PatchMethodByName(harmony, "PilotPlayerState", "PlayerAxisControls", typeof(PilotPlayerState_Patch));
@@ -114,9 +117,10 @@ namespace BothBrakesMod
 
         private void Update()
         {
+            if (!MapExists) return;
+            
             // Reset states if not inside a local aircraft (e.g. menu, spectator, dead, ejected)
-            Aircraft localAircraft;
-            if (!GameManager.GetLocalAircraft(out localAircraft) || localAircraft == null)
+            if (!GameManager.GetLocalAircraft(out Aircraft localAircraft) || localAircraft == null)
             {
                 if (WheelbrakeToggled || AirbrakeToggled || BothBrakesToggled)
                 {
@@ -188,9 +192,8 @@ namespace BothBrakesMod
         {
             // If neither brake is active, do nothing
             if ((!Plugin.IsAirbrakeActive && !Plugin.IsWheelbrakeActive) || __instance == null || __instance.controlInputs == null) return;
-
-            Aircraft localAircraft;
-            if (GameManager.GetLocalAircraft(out localAircraft) && localAircraft != null)
+            
+            if (GameManager.GetLocalAircraft(out Aircraft localAircraft) && localAircraft != null)
             {
                 // Inject the Wheelbrake logic
                 if (Plugin.IsWheelbrakeActive)
@@ -204,6 +207,24 @@ namespace BothBrakesMod
                     __instance.controlInputs.throttle = 0f; // Force throttle to 0f
                 }
             }
+        }
+    }
+    
+    [HarmonyPatch]
+    public class DynamicMapPatches
+    {
+        [HarmonyPatch(typeof(DynamicMap), nameof(DynamicMap.OnEnable))]
+        [HarmonyPostfix]
+        private static void OnMapEnablePostfix()
+        {
+            Plugin.MapExists = true;
+        }
+        
+        [HarmonyPatch(typeof(DynamicMap), nameof(DynamicMap.OnDestroy))]
+        [HarmonyPostfix]
+        private static void OnMapDestroyPostfix()
+        {
+            Plugin.MapExists = false;
         }
     }
 }
