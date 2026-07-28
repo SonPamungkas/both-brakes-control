@@ -7,7 +7,7 @@ using Rewired;
 using InputFramework;
 namespace BothBrakesMod
 {
-    [BepInPlugin("neutral.both.brakes", "BothBrakesMod", "1.1.0")]
+    [BepInPlugin("neutral.both.brakes", "BothBrakesMod", "1.3.0")]
     public class Plugin : BaseUnityPlugin
     {
         public static BepInEx.Logging.ManualLogSource Log = null!;
